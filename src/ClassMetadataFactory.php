@@ -9,9 +9,14 @@ namespace Ergnuor\Mapping;
  */
 class ClassMetadataFactory implements ClassMetadataFactoryInterface
 {
+    private const ALL_CLASS_NAMES_CACHE_KEY = 'allClassNames';
+    private const ALL_CLASS_NAMES_ARRAY_KEY = 'classNames';
+    private const ALL_FLIPPPED_CLASS_NAMES_ARRAY_KEY = 'flippedClassNames';
+
     private bool $isInitialized = false;
     private \Psr\Cache\CacheItemPoolInterface $cache;
     private ?array $classNames = null;
+    private ?array $flippedClassNames = null;
 
     /**
      * @var T[]
@@ -25,22 +30,50 @@ class ClassMetadataFactory implements ClassMetadataFactoryInterface
         $this->adapter = $adapter;
     }
 
-    public function getAllMetadata()
+    public function getAllMetadata(): array
     {
+        $metadata = [];
         $classNames = $this->getAllClassNames();
 
         foreach ($classNames as $className) {
-            $this->getMetadataFor($className);
+            $metadata[] = $this->getMetadataFor($className);
         }
+
+        return $metadata;
     }
 
     public function getAllClassNames(): array
     {
-        if ($this->classNames === null) {
-            $this->classNames = $this->adapter->getClassNames();
-        }
+        $this->initAllClassNames();
 
         return $this->classNames;
+    }
+
+    private function initAllClassNames(): void
+    {
+        if ($this->classNames !== null) {
+            return;
+        }
+
+        $cacheKey = self::ALL_CLASS_NAMES_CACHE_KEY;
+        $allClassesCacheItem = $this->cache->getItem($cacheKey);
+
+        if ($allClassesCacheItem->isHit()) {
+            $cachedClassNames = $allClassesCacheItem->get();
+
+            $this->classNames = $cachedClassNames[self::ALL_CLASS_NAMES_ARRAY_KEY];
+            $this->flippedClassNames = $cachedClassNames[self::ALL_FLIPPPED_CLASS_NAMES_ARRAY_KEY];
+        } else {
+            $this->classNames = $this->adapter->getClassNames();
+            $this->flippedClassNames = array_flip($this->classNames);
+
+//            $cachedMetadataItem = $this->cache->getItem($cacheKey);
+            $allClassesCacheItem->set([
+                self::ALL_CLASS_NAMES_ARRAY_KEY => $this->classNames,
+                self::ALL_FLIPPPED_CLASS_NAMES_ARRAY_KEY => $this->flippedClassNames,
+            ]);
+            $this->cache->save($allClassesCacheItem);
+        }
     }
 
     /**
@@ -91,6 +124,13 @@ class ClassMetadataFactory implements ClassMetadataFactoryInterface
     private function getCacheKey(string $className): string
     {
         return str_replace('\\', '__', $className);
+    }
+
+    public function hasMetadataFor(string $className): bool
+    {
+        $this->initAllClassNames();
+
+        return isset($this->flippedClassNames[$className]);
     }
 
     public function setCache(\Psr\Cache\CacheItemPoolInterface $cache)

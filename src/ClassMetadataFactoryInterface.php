@@ -11,9 +11,11 @@ use Psr\Cache\CacheItemPoolInterface;
  */
 interface ClassMetadataFactoryInterface
 {
-    public function getAllMetadata();
+    public function getAllMetadata(): array;
 
     public function getAllClassNames(): array;
+
+    public function hasMetadataFor(string $className): bool;
 
     /**
      * @param string $className
